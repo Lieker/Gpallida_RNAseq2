@@ -1,0 +1,558 @@
+---
+title: "Gpallida_RNAseq2"
+author: "Lieke Vlaar"
+date: "19/07/2021"
+output: html_document
+---
+
+# Introduction
+In this file the complete analysis workflow of count data of the Globodera pallida RNAseq experiment is shown.
+
+## Goal
+
+The goal of this experiment is to unravel the effect of solanoeclepin A on the hydrated cysts of G pallida. The set up of this experiment is summarized in this figure:
+```{r include = FALSE}
+if ("knitr" %in% installed.packages()){
+  library("knitr")
+} else {
+  install.packages("knitr")
+  library("knitr")
+}
+```
+```{r setup, include = FALSE}
+knitr::opts_knit$set(root.dir = rprojroot::find_rstudio_root_file())
+```
+
+```{r figurename, echo=FALSE, out.width = '90%'}
+knitr::include_graphics("input/overview.png")
+```
+
+## Setup
+
+Packages necessary:
+
+* Checkpoint
+* DESeq2
+* dplyr
+* tidyr
+* tidyverse
+* Biostrings
+* biomaRt
+* biomartr
+* clusterProfiler
+* org.At.tair.db
+* tibble
+* mixOmics
+* vegan
+* apeglm
+* EnhancedVolcano
+* patchwork
+* reshape
+* pheatmap
+* purr
+* ComplexUpset
+
+```{r include=FALSE}
+#########
+# Library
+#########
+if ("checkpoint" %in% installed.packages()){
+  library("checkpoint") # https://cran.r-project.org/web/packages/checkpoint/index.html
+} else {
+  install.packages("checkpoint")
+  suppressPackageStartupMessages(library("checkpoint"))
+  suppressPackageStartupMessages(checkpoint("2021-04-20"))  # all packages in your project will be taken from that date.
+}
+if ("DESeq2" %in% installed.packages()){
+  library("DESeq2")
+} else {
+  BiocManager::install("DESeq2")
+  library("DESeq2")
+}
+if ("dplyr" %in% installed.packages()){
+  library("dplyr")
+} else {
+  install.packages("dplyr")
+  library("dplyr")
+}
+if ("tidyr" %in% installed.packages()){
+  library("tidyr")
+} else {
+  install.packages("tidyr")
+  library("tidyr")
+}
+if ("tidyverse" %in% installed.packages()){
+  library("tidyverse")
+} else {
+  install.packages("tidyverse")
+  library("tidyverse")
+}
+if ("Biostrings" %in% installed.packages()){
+  library("Biostrings") 
+} else {
+  BiocManager::install("Biostrings")
+  library("Biostrings")
+}
+if ("biomaRt" %in% installed.packages()){
+  library("biomaRt") 
+} else {
+  BiocManager::install("biomaRt")
+  library("biomaRt")
+}
+if ("biomartr" %in% installed.packages()){
+  library("biomartr")
+} else {
+  install.packages("biomartr", dependencies = TRUE)
+  library("biomartr")
+}
+if ("clusterProfiler" %in% installed.packages()){
+  library("clusterProfiler") 
+} else {
+  BiocManager::install("clusterProfiler")
+  library("clusterProfiler")
+}
+if ("org.At.tair.db" %in% installed.packages()){
+  library("org.At.tair.db") 
+} else {
+  BiocManager::install("org.At.tair.db")
+  library("org.At.tair.db")
+}
+if ("tibble" %in% installed.packages()){
+  library("tibble") 
+} else {
+  install.packages("tibble")
+  library("tibble")
+}
+if ("mixOmics" %in% installed.packages()){
+  library("mixOmics") 
+} else {
+  BiocManager::install("mixOmics")
+  library("mixOmics")
+}
+if ("vegan" %in% installed.packages()){
+  library("vegan") 
+} else {
+  install.packages("vegan")
+  library("vegan")
+}
+if ("apeglm" %in% installed.packages()){
+  library("apeglm") 
+} else {
+  BiocManager::install("apeglm")
+  library("apeglm")
+}
+if ("EnhancedVolcano" %in% installed.packages()){
+  library("EnhancedVolcano") 
+} else {
+  BiocManager::install("EnhancedVolcano")
+  library("EnhancedVolcano")
+}
+if ("patchwork" %in% installed.packages()){
+  library("patchwork") 
+} else {
+  BiocManager::install("patchwork")
+  library("patchwork")
+}
+if ("reshape" %in% installed.packages()){
+  library("reshape") 
+} else {
+  install.packages("reshape")
+  library("reshape")
+}
+if ("pheatmap" %in% installed.packages()){
+  library("pheatmap") 
+} else {
+  BiocManager::install("pheatmap")
+  library("pheatmap")
+}
+if ("purrr" %in% installed.packages()){
+  library("purrr") 
+} else {
+  BiocManager::install("purrr")
+  library("purrr")
+}
+if ("ComplexUpset" %in% installed.packages()){
+  library("ComplexUpset") 
+} else {
+  BiocManager::install("ComplexUpset")
+  library("ComplexUpset")
+}
+```
+
+# Import and transform counts table and xp_design
+
+Import counts file and clean up. This file is saved into the input/ folder for later use.
+
+```{r counts}
+raw_counts <- read.csv("input/count_table_gene.csv", 
+                         header = TRUE, 
+                         stringsAsFactors = FALSE, 
+                         check.names = FALSE, 
+                         fileEncoding = "UTF-8-BOM")
+raw_counts <- raw_counts[-c(1:5),]
+rownames(raw_counts) <- NULL
+raw_counts <- raw_counts %>% column_to_rownames("gene_id")
+samplelist <- names(raw_counts)
+samplelist <- gsub("NS2102_","",samplelist)
+samplelist <- substr(samplelist, 1, 5)
+samplelist <- gsub("_$", "", samplelist)
+names(raw_counts) <- samplelist
+counts <- raw_counts[,order(colnames(raw_counts))] %>% rownames_to_column("Geneid")
+write.csv(counts, "input/counts.csv", row.names = FALSE)
+counts[1:5, 1:5]
+```
+
+Compile an xp_design file. This file is saved into the input/ folder for later use.
+
+```{r xp_design}
+sample <- names(counts)[2:41]
+treatment <- c(rep("PRD", 12), rep("solA", 13), rep("water", 15))
+tp <- c(rep("24", 4), rep("48", 3), rep("8", 5), rep("24", 5), rep("48", 4), rep("8", 4), rep("24", 5), rep("48", 5), rep("8", 5))
+xp_design <- data.frame(sample, treatment, tp)
+write.csv(xp_design, "input/xp_design.csv", row.names = FALSE)
+head(xp_design)
+```
+
+# PCA analysis
+
+Let's see how the samples cluster in a PCA plot. We take all samples and plot it using the function plot_pca() (all scripts can be found in the scripts/ folder).
+
+```{r PCA_allsamples}
+source("scripts/create_pca_plot.R")
+plot_pca()
+```
+
+These seem to cluster mostly on timepoint, because timepoint 8 (circles) are separated from the rest. Timepoint 24 and 48 seem to mix a little. Also, the colours, which indicate treatment, seem to separate within the timepoint, which is good!
+Hence, timepoint is the largest source of variation in our experiment, followed by treatment.
+Let's look at the PCA plots of individual timepoints.
+
+```{r PCA_per_treatment}
+p1 <- plot_pca(tp = 8)
+p2 <- plot_pca(tp = 24)
+p3 <- plot_pca(tp = 48)
+
+p1 + p2 + p3 + plot_layout(ncol = 2)
+```
+On all individual timepoints, the treatments cluster within the first two components. This means that these are the biggest sources of variation in our experiments.
+
+# DEG analysis
+
+Let's make some volcano plots to visualise the DEGs per timepoint. First for the solA treatment versus water:
+
+```{r}
+source("scripts/volcanoplot.R")
+```
+```{r volcano1, fig.height = 15, fig.width = 8, warning = FALSE, message = FALSE}
+v1 <- make_volcanoplot(trtm = c("water", "solA"), tp = 8, log2FC_threshold = 0, FCcutoff_volcano = 1, padj_threshold = 0.01, ttl = "Timepoint 8h, water vs. solA", method = "treatment", xsize = 2.5)
+v2 <- make_volcanoplot(trtm = c("water", "solA"), tp = 24, log2FC_threshold = 0, FCcutoff_volcano = 1, padj_threshold = 0.01, ttl = "Timepoint 24h, water vs. solA", method = "treatment", xsize = 3)
+v3 <- make_volcanoplot(trtm = c("water", "solA"), tp = 48, log2FC_threshold = 0, FCcutoff_volcano = 1, padj_threshold = 0.01, ttl = "Timepoint 48h, water vs. solA", method = "treatment", xsize = 10)
+v1 + v2 + v3 + plot_layout(ncol = 1)
+```
+
+Let's do the same for the PRD treatment versus water:
+
+```{r volcano2, fig.height = 15, fig.width = 8, warning = FALSE, message = FALSE}
+v4 <- make_volcanoplot(trtm = c("water", "PRD"), tp = 8, treatment2 = "PRD", log2FC_threshold = 0, FCcutoff_volcano = 1, padj_threshold = 0.01, ttl = "Timepoint 8h, water vs. PRD", method = "treatment", xsize = 8)
+v5 <- make_volcanoplot(trtm = c("water", "PRD"), tp = 24, treatment2 = "PRD", log2FC_threshold = 0, FCcutoff_volcano = 1, padj_threshold = 0.01, ttl = "Timepoint 24h, water vs. PRD", method = "treatment", xsize = 8)
+v6 <- make_volcanoplot(trtm = c("water", "PRD"), tp = 48, treatment2 = "PRD", log2FC_threshold = 0, FCcutoff_volcano = 1, padj_threshold = 0.01, ttl = "Timepoint 48h, water vs. PRD", method = "treatment", xsize = 10)
+
+v4 + v5 + v6 + plot_layout(ncol = 1)
+```
+
+Possibly it is interesting to see the impact of all the compounds in PRD that are not solanoeclepin A. So check the DEGs of the PRD treatment versus solA:
+
+```{r volcano3, fig.height = 15, fig.width = 8, warning = FALSE, message = FALSE}
+v7 <- make_volcanoplot(trtm = c("solA", "PRD"), tp = 8, ref_treatment = "solA", treatment2 = "PRD", log2FC_threshold = 0, FCcutoff_volcano = 1, padj_threshold = 0.01, ttl = "Timepoint 8h, solA vs. PRD", method = "treatment", xsize = 8)
+v8 <- make_volcanoplot(trtm = c("solA", "PRD"), tp = 24, ref_treatment = "solA", treatment2 = "PRD", log2FC_threshold = 0, FCcutoff_volcano = 1, padj_threshold = 0.01, ttl = "Timepoint 24h, solA vs. PRD", method = "treatment", xsize = 8)
+v9 <- make_volcanoplot(trtm = c("solA", "PRD"), tp = 48, ref_treatment = "solA", treatment2 = "PRD", log2FC_threshold = 0, FCcutoff_volcano = 1, padj_threshold = 0.01, ttl = "Timepoint 48h, solA vs. PRD", method = "treatment", xsize = 8)
+
+v7 + v8 + v9 + plot_layout(ncol = 1)
+```
+
+We also need lists of differentially expressed genes per treatment. For that, we can use the function get_list_of_DEGs(). Let's do it first for the solA treated samples and let's count how many DEGs for each timepoint:
+
+```{r DEGslist, message=FALSE, warning=FALSE}
+source("scripts/get_filtered_list_of_DEGs.R")
+solA_8h <- get_list_of_DEGs(trtm = c("water", "solA"), ref_treatment = "water", treatment2 = "solA", tp = 8, log2FC_threshold = 0, padj_threshold = 0.05) %>% rownames_to_column("Geneid")
+
+solA_24h <- get_list_of_DEGs(trtm = c("water", "solA"), ref_treatment = "water", treatment2 = "solA", tp = 24, log2FC_threshold = 0, padj_threshold = 0.05) %>% rownames_to_column("Geneid")
+
+solA_48h <- get_list_of_DEGs(trtm = c("water", "solA"), ref_treatment = "water", treatment2 = "solA", tp = 48, log2FC_threshold = 0, padj_threshold = 0.05) %>% rownames_to_column("Geneid")
+
+write.csv(solA_8h, "output/DEGs_solA_8h.csv", row.names = FALSE)
+write.csv(solA_24h, "output/DEGs_solA_24h.csv", row.names = FALSE)
+write.csv(solA_48h, "output/DEGs_solA_48h.csv", row.names = FALSE)
+
+nrow(solA_8h)
+nrow(solA_24h)
+nrow(solA_48h)
+```
+
+Let's check if any of these DEGs are overlapping:
+```{r overlap_solA, warning = FALSE, message = FALSE}
+sum(solA_8h$Geneid %in% solA_24h$Geneid)
+sum(solA_8h$Geneid %in% solA_48h$Geneid)
+sum(solA_24h$Geneid %in% solA_48h$Geneid)
+```
+
+Indeed, 24h and 48h overlap quite a bit (428 DEGs overlap), much more than either with the 8h timepoint (131 and 73, respectively).
+
+Let's do the same thing for the PRD treated samples:
+
+```{r DEGslist2, warning = FALSE, message = FALSE}
+PRD_8h <- get_list_of_DEGs(trtm = c("water", "PRD"), ref_treatment = "water", treatment2 = "PRD", tp = 8, log2FC_threshold = 0, padj_threshold = 0.05) %>% rownames_to_column("Geneid")
+PRD_24h <- get_list_of_DEGs(trtm = c("water", "PRD"), ref_treatment = "water", treatment2 = "PRD", tp = 24, log2FC_threshold = 0, padj_threshold = 0.05) %>% rownames_to_column("Geneid")
+PRD_48h <- get_list_of_DEGs(trtm = c("water", "PRD"), ref_treatment = "water", treatment2 = "PRD", tp = 48, log2FC_threshold = 0, padj_threshold = 0.05) %>% rownames_to_column("Geneid")
+
+write.csv(PRD_8h, "output/DEGs_PRD_8h.csv", row.names = FALSE)
+write.csv(PRD_24h, "output/DEGs_PRD_24h.csv", row.names = FALSE)
+write.csv(PRD_48h, "output/DEGs_PRD_48h.csv", row.names = FALSE)
+
+nrow(PRD_8h)
+nrow(PRD_24h)
+nrow(PRD_48h)
+```
+
+And let's check the overlap:
+
+```{r overlap_PRD, warning = FALSE, message = FALSE}
+sum(PRD_8h$Geneid %in% PRD_24h$Geneid)
+sum(PRD_8h$Geneid %in% PRD_48h$Geneid)
+sum(PRD_24h$Geneid %in% PRD_48h$Geneid)
+```
+
+Now, the same is done for the PRD versus solA comparison. Furthermore, a matrix is made to show for each gene if they appear in the list of DEGs for all comparisons. We need this to visualise this information in a Venn diagram or, in this case, an upset plot. An upset plot is a better alternative for a Venn diagram if you have more than 4 groups in the comparison (which is the case for us). 
+
+```{r prepare_for_upset, warning = FALSE, message = FALSE}
+solA_8h_incounts <- counts$Geneid %in% solA_8h$Geneid
+solA_24h_incounts <- counts$Geneid %in% solA_24h$Geneid
+solA_48h_incounts <- counts$Geneid %in% solA_48h$Geneid
+PRD_8h_incounts <- counts$Geneid %in% PRD_8h$Geneid
+PRD_24h_incounts <- counts$Geneid %in% PRD_24h$Geneid
+PRD_48h_incounts <- counts$Geneid %in% PRD_48h$Geneid
+
+#generate lists of DEGs for the PRD vs solA comparisons per timepoint:
+PRD_vs_solA_8h <- get_list_of_DEGs(trtm = c("solA", "PRD"), ref_treatment = "solA", treatment2 = "PRD", tp = 8, log2FC_threshold = 0, padj_threshold = 0.05) %>% rownames_to_column("Geneid")
+PRD_vs_solA_24h <- get_list_of_DEGs(trtm = c("solA", "PRD"), ref_treatment = "solA", treatment2 = "PRD", tp = 24, log2FC_threshold = 0, padj_threshold = 0.05) %>% rownames_to_column("Geneid")
+PRD_vs_solA_48h <- get_list_of_DEGs(trtm = c("solA", "PRD"), ref_treatment = "solA", treatment2 = "PRD", tp = 48, log2FC_threshold = 0, padj_threshold = 0.05) %>% rownames_to_column("Geneid")
+
+#save these lists into the output folder
+write.csv(PRD_vs_solA_8h, "output/DEGs_PRDvsSolA_8h.csv", row.names = FALSE)
+write.csv(PRD_vs_solA_24h, "output/DEGs_PRDvsSolA_24h.csv", row.names = FALSE)
+write.csv(PRD_vs_solA_48h, "output/DEGs_PRDvsSolA_48h.csv", row.names = FALSE)
+
+#generate the TRUE/FALSE lists for the PRD vs solA comparisons per timepoint:
+PRD_vs_solA_8h_incounts <- counts$Geneid %in% PRD_vs_solA_8h$Geneid
+PRD_vs_solA_24h_incounts <- counts$Geneid %in% PRD_vs_solA_24h$Geneid
+PRD_vs_solA_48h_incounts <- counts$Geneid %in% PRD_vs_solA_48h$Geneid
+
+#assemble the matrix
+m <- tibble(counts$Geneid, solA_8h_incounts, solA_24h_incounts, solA_48h_incounts, PRD_8h_incounts, PRD_24h_incounts, PRD_48h_incounts, PRD_vs_solA_8h_incounts, PRD_vs_solA_24h_incounts, PRD_vs_solA_48h_incounts) %>% column_to_rownames("counts$Geneid")
+mnames <- colnames(m) 
+mnames <- gsub("_incounts", "", mnames)
+colnames(m) <- mnames
+m[1:10, 1:4]
+```
+
+Now we have the matrix, but we are not interested in genes that are not differentially expressed in any treatment, so we kick those out. Then we can plot the upset plot with the Complex Upset package (was loaded before).
+This plot will only include the PRD and solA comparisons with water (not the PRD with solA comparison).
+
+```{r plot_upset, fig.height=6, fig.width=10, message=FALSE, warning=FALSE}
+m$x <- rowSums(m[,mnames])
+m <- m[m$x >0,]
+m <- m[, 1:9]
+  
+u <- upset(data = m[, 1:6],
+           intersect = mnames[1:6], 
+           min_size = 0, 
+           min_degree = 1, 
+           name = "",
+           base_annotations = list('Intersection size' = intersection_size(
+             text = list(vjust = 0.3,                                                                                       hjust = -0.15,
+                         angle = 90),
+             text_colors = c(on_background = 'black',
+                             on_bar='white')) + ylab('# overlapping DEGs in intersection')),
+            set_sizes=(upset_set_size() + geom_text(aes(label=..count..),
+                                                    hjust=1.1,
+                                                    stat='count')))
+u
+```
+
+To make sure the plot shows how many genes are up- and downregulated, make a table to show this information:
+
+```{r updown_table, message = FALSE, warning = FALSE}
+updown <- function(s, method) {
+  s <- as.data.frame(s)
+  if(method == "u"){
+    x <- s[s$log2FoldChange > 0, ]
+    return(nrow(x)) 
+  } else if(method == "d"){
+      x <- s[s$log2FoldChange < 0, ]
+      return(nrow(x))
+    }
+}
+
+up <- c(updown(solA_8h, "u"),
+        updown(solA_24h, "u"),
+        updown(solA_48h, "u"),
+        updown(PRD_8h, "u"),
+        updown(PRD_24h, "u"),
+        updown(PRD_48h, "u"),
+        updown(PRD_vs_solA_8h, "u"),
+        updown(PRD_vs_solA_24h, "u"),
+        updown(PRD_vs_solA_48h, "u")
+        )
+
+down <- c(updown(solA_8h, "d"),
+          updown(solA_24h, "d"),
+          updown(solA_48h, "d"),
+          updown(PRD_8h, "d"),
+          updown(PRD_24h, "d"),
+          updown(PRD_48h, "d"),
+          updown(PRD_vs_solA_8h, "d"),
+          updown(PRD_vs_solA_24h, "d"),
+          updown(PRD_vs_solA_48h, "d")
+          )
+ud <- append(up, down)
+DEG <- c(rep("up", 9), rep("down", 9))
+ud <- data.frame(mnames, DEG, ud)
+colnames(ud) <- c("group", "DEG", "number")
+ud
+```
+
+Now implement this information from the ud table into the upset plot:
+
+```{r upset2, fig.height=6, fig.width=10, message=FALSE, warning=FALSE}
+ud1 <- ud[c(1:6, 10:15),]
+
+u2 <- upset(data = m[, 1:6],
+           intersect = mnames[1:6], 
+           min_size = 0, 
+           min_degree = 1, 
+           name = "",
+           base_annotations = list('Intersection size' = intersection_size(
+             text = list(vjust = 0.3,                                                                                       hjust = -0.15,
+                         angle = 90),
+             text_colors = c(on_background = 'black',
+                             on_bar='white')) + ylab('# overlapping DEGs in intersection')),
+           set_size = FALSE)
+     
+ud1$group <- factor(ud1$group, levels = c("solA_8h", "solA_48h","solA_24h", "PRD_48h", "PRD_8h", "PRD_24h"))
+ud1 <- ud1[order(ud1$group),]
+
+udplot <- ggplot(ud1, aes(fill=DEG, y=number, x=group)) + 
+  geom_bar(position="stack", stat="identity") +
+  coord_flip() +
+  theme(legend.position = "none") +
+  theme_minimal() +
+  theme(axis.text.y=element_blank(),
+        axis.title.y=element_blank()) +
+  scale_fill_manual(values = c("red3", "chartreuse4"))
+
+layout <- '
+BB#
+BB#
+BBA
+'
+
+wrap_plots(A = udplot, B = u2, design = layout)
+```
+
+Interesting in this plot: PRD leads to many more DEGs than solA treatment, at all timepoints. For both treatments, most DEGs are at 24h. In PRD, there are more upregulated genes than downregulated, and for solA this is the other way around.
+Furthermore, whereas there are 326 genes specifically differentially expressed in all timepoints of PRD treatment, only 3 are specific for all timepoints of solA treatment. Potentially, these 326 PRD-specific genes are upregulated by the compounds in root exudate that are not (related to) solA.
+There are no genes are differentially expressed in all 6 treatments, but there are 116 genes that are differentially expressed in all treatments but solA_8h. This treatment also has the least amount of DEGs of all treatments.
+For time-specific DEGs, there are 6, 105, and 44 genes DEGs in both treatments at timepoints 8, 24 and 48h, respectively. For sample-specific DEGs, there are 411, 862 and 234 for PRD and 20, 287 and 64 for solA, exclusively differentially expressed genes at timepoints 8, 24 and 48h, respectively.
+
+# Dauer-related genes
+
+To find out if there are any homologues of C. elegans dauer-related genes differentially expressed in any of these treatments, we find the overlap between a list of identifiers that are (putative) homologues of C. elegans dauer genes, and the lists of DEGs of these samples. Let's start by having a look at the list of dauer genes.
+
+```{r list_dauer_genes, message = FALSE, warning = FALSE}
+dauergenes <- read.csv("input/dauer_geneIDs.csv",
+                       header = TRUE, 
+                       stringsAsFactors = FALSE, 
+                       check.names = FALSE, 
+                       fileEncoding = "UTF-8-BOM")
+dauergenes$Gpa_ID <- gsub(".t.$", "", dauergenes$Gpa_ID)
+dauergenes$Gpa_ID <- gsub(".t..$", "", dauergenes$Gpa_ID)
+dauergenes <- dauergenes[!duplicated(dauergenes),]
+head(dauergenes)
+```
+
+Let's see how many of these genes overlap with our datasets.
+
+```{r dauergenes_overlap, message = FALSE, warning = FALSE}
+colnames(dauergenes) <- c("Ce_ID", "Geneid", "pathway")
+solA_8h_dauer <- solA_8h[solA_8h$Geneid %in% dauergenes$Geneid, ] %>% left_join(., dauergenes, by = "Geneid")
+solA_8h_dauer$sample <- c(rep("solA_8h", nrow(solA_8h_dauer)))
+solA_8h_dauer
+```
+
+So there are two genes that are putative homologues of dauer genes in the solA_8h sample. Let's do the same for the other samples and assemble all results in one table.
+
+```{r dauergenes_overlap2, message = FALSE, warning = FALSE}
+solA_24h_dauer <- solA_24h[solA_24h$Geneid %in% dauergenes$Geneid, ] %>% left_join(., dauergenes, by = "Geneid")
+solA_24h_dauer$sample <- c(rep("solA_24h", nrow(solA_24h_dauer)))
+solA_48h_dauer <- solA_48h[solA_48h$Geneid %in% dauergenes$Geneid, ] %>% left_join(., dauergenes, by = "Geneid")
+solA_48h_dauer$sample <- c(rep("solA_48h", nrow(solA_48h_dauer)))
+PRD_8h_dauer <- PRD_8h[PRD_8h$Geneid %in% dauergenes$Geneid, ] %>% left_join(., dauergenes, by = "Geneid")
+PRD_8h_dauer$sample <- c(rep("PRD_8h", nrow(PRD_8h_dauer)))
+PRD_24h_dauer <- PRD_24h[PRD_24h$Geneid %in% dauergenes$Geneid, ] %>% left_join(., dauergenes, by = "Geneid")
+PRD_24h_dauer$sample <- c(rep("PRD_24h", nrow(PRD_24h_dauer)))
+PRD_48h_dauer <- PRD_48h[PRD_48h$Geneid %in% dauergenes$Geneid, ] %>% left_join(., dauergenes, by = "Geneid")
+PRD_48h_dauer$sample <- c(rep("PRD_48h", nrow(PRD_48h_dauer)))
+dauer_overlap <- rbind(solA_8h_dauer, solA_24h_dauer, solA_48h_dauer, PRD_8h_dauer, PRD_24h_dauer, PRD_48h_dauer)
+write.csv(dauer_overlap, "output/dauer_overlap.csv", row.names = FALSE)
+dauer_overlap[,-c(4:6)]
+```
+
+Interestingly, daf-9 is upregulated (log2foldchange 2.0) after 24h in solA, but not in PRD. daf-12 is slightly downregulated after 24h in PRD (log2foldchange -0.5). There are many more differentially expressed dauer-related genes, and we should have an overview for all samples to see what is happening. Therefore, a heatmap showing all dauer-related genes and whether they are differentially expressed, is made.
+
+```{r heatmap_dauer, message = FALSE, warning = FALSE}
+#make heatmap matrix
+heat_solA_8h <- left_join(dauergenes, solA_8h[,c(1,3)], by = "Geneid")
+heat_solA_24h <- left_join(dauergenes, solA_24h[,c(1,3)], by = "Geneid")
+heat_solA_48h <- left_join(dauergenes, solA_48h[,c(1,3)], by = "Geneid") 
+heat_PRD_8h <- left_join(dauergenes, PRD_8h[,c(1,3)], by = "Geneid") 
+heat_PRD_24h <- left_join(dauergenes, PRD_24h[,c(1,3)], by = "Geneid")
+heat_PRD_48h <- left_join(dauergenes, PRD_48h[,c(1,3)], by = "Geneid")
+heatm <- cbind(heat_solA_8h, heat_PRD_8h, heat_solA_24h, heat_PRD_24h, heat_solA_48h, heat_PRD_48h) %>% column_to_rownames("Ce_ID")
+heatm <- heatm[,c(3,7,11,15,19,23)]
+colnames(heatm) <- c("solA_8h", "PRD_8h", "solA_24h", "PRD_24h", "solA_48h", "PRD_48h")
+#set all NA's to 0 (these are not significant so do not have a valid log2fold change)
+heatm <- heatm %>% mutate_all(~replace(., is.na(.), 0))
+
+#remove homologues of same gene that are not differentially expressed
+heatm <- heatm[-c(2:42,44:46,48,49,55,58,76,82,92,93,95:97,105,106,108:113,117:130),]
+row.names(heatm)[2] <- "daf-37.1"
+row.names(heatm)[3] <- "daf-37.2"
+
+#arrange pathway labels
+dauergenes2 <- row.names(heatm)
+pathway <- c(rep("cGMP",10), rep("insulin", 19), rep("TGFB", 9), rep("DA_biosynthesis", 18))
+anno <- data.frame(dauergenes2, pathway) %>% column_to_rownames("dauergenes2")
+anno$pathway <- factor(anno$pathway, levels = c("cGMP", "insulin", "TGFB", "DA_biosynthesis"))
+annocolour <- list(
+  pathway = c(cGMP = "#de8e10",
+              insulin = "#10de8e", 
+              TGFB = "#8e10de", 
+              DA_biosynthesis = "#1060de"))
+
+
+#Arrange colour palette
+paletteLength <- 50
+myColor <- colorRampPalette(c("red3", "black", "chartreuse4"))(paletteLength)
+myBreaks <- c(seq(min(heatm), 0, length.out=ceiling(paletteLength/2) + 1), 
+              seq((max(heatm)/paletteLength), max(heatm), length.out=floor(paletteLength/2)))
+
+pheatmap(as.matrix(t(heatm)),
+         cluster_rows = FALSE,
+         cluster_cols = FALSE,
+         gaps_col = c(10,29,38),
+         gaps_row = c(2,4),
+         breaks = myBreaks,
+         color = myColor,
+         annotation_col = anno,
+         annotation_colors = annocolour,
+         border_color = NA)
+```
