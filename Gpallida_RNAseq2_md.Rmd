@@ -440,6 +440,7 @@ u2 <- upset(data = m[, 1:6],
 ud1$group <- factor(ud1$group, levels = c("solA_8h", "solA_48h","solA_24h", "PRD_48h", "PRD_8h", "PRD_24h"))
 ud1 <- ud1[order(ud1$group),]
 
+
 udplot <- ggplot(ud1, aes(fill=DEG, y=number, x=group)) + 
   geom_bar(position="stack", stat="identity") +
   coord_flip() +
