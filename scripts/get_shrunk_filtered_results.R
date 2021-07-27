@@ -14,7 +14,7 @@ get_shrunk_filtered_results <- function(d = dds,
   target <- xp_design %>% dplyr::filter(xp_design$tp %in% th) 
   target <- target %>% dplyr::filter(target$treatment %in% trtm)
   target <- unique(as.character(target$group))
-  res_shr <- lfcShrink(dds = dds,
+  res_shr <- lfcShrink(dds = d,
                        res = res,
                        type = "ashr",
                        contrast = c("group", target[2], target[1]))

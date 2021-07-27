@@ -17,6 +17,8 @@ get_DESeq_dds <- function(counts_csv_file = "input/counts.csv",
   counts <- counts %>% column_to_rownames("sample") %>% t()
   dds <- DESeqDataSetFromMatrix(countData = counts, colData = xp_design, design = ~ group)
   
+  keep <- rowSums(counts(dds)) >= 10
+  dds <- dds[keep,]
   dds <- DESeq(dds)
   return(dds)
 }
