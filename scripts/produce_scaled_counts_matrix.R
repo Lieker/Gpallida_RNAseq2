@@ -19,7 +19,7 @@ produce_scaled_counts_matrix <- function(count_csv_file = "input/counts.csv",
   xp_design$tp <- as.factor(xp_design$tp)
   
 
-  dds <- DESeqDataSetFromMatrix(countData = counts, colData = xp_design, design = ~ 1)
+  dds <- DESeqDataSetFromMatrix(countData = counts, colData = xp_design, design = ~ group)
   dds <- estimateSizeFactors(dds)
   dds = estimateDispersions(object = dds, 
                             fitType = "parametric", 

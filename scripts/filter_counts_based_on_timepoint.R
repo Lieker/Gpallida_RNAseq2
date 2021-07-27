@@ -2,8 +2,8 @@ scaled_counts <- produce_scaled_counts_matrix()
 
 
 filter_counts_based_on_timepoint <- function(counts = scaled_counts, 
-                                        xp_design_csv_file = "input/xp_design.csv", 
-                                        timep = c(8,24,48)) {
+                                             xp_design_csv_file = "input/xp_design.csv", 
+                                             timep = c(8,24,48)) {
   # read and filter xp design info for selected time
   xp_design = read.csv(file = xp_design_csv_file,
                        header = TRUE, 
@@ -18,4 +18,3 @@ filter_counts_based_on_timepoint <- function(counts = scaled_counts,
   
   return(filtered_counts)
 }
-

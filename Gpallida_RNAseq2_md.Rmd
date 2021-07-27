@@ -49,7 +49,7 @@ Packages necessary:
 * patchwork
 * reshape
 * pheatmap
-* purr
+* purrr
 * ComplexUpset
 
 ```{r include=FALSE}
@@ -135,11 +135,11 @@ if ("vegan" %in% installed.packages()){
   install.packages("vegan")
   library("vegan")
 }
-if ("apeglm" %in% installed.packages()){
-  library("apeglm") 
+if ("ashr" %in% installed.packages()){
+  library("ashr") 
 } else {
-  BiocManager::install("apeglm")
-  library("apeglm")
+  BiocManager::install("ashr")
+  library("ashr")
 }
 if ("EnhancedVolcano" %in% installed.packages()){
   library("EnhancedVolcano") 
@@ -209,6 +209,7 @@ sample <- names(counts)[2:41]
 treatment <- c(rep("PRD", 12), rep("solA", 13), rep("water", 15))
 tp <- c(rep("24", 4), rep("48", 3), rep("8", 5), rep("24", 5), rep("48", 4), rep("8", 4), rep("24", 5), rep("48", 5), rep("8", 5))
 xp_design <- data.frame(sample, treatment, tp)
+xp_design$group <- factor(paste0(xp_design$treatment, "_", xp_design$tp))
 write.csv(xp_design, "input/xp_design.csv", row.names = FALSE)
 head(xp_design)
 ```
@@ -217,7 +218,7 @@ head(xp_design)
 
 Let's see how the samples cluster in a PCA plot. We take all samples and plot it using the function plot_pca() (all scripts can be found in the scripts/ folder).
 
-```{r PCA_allsamples}
+```{r PCA_allsamples, message = FALSE, warning = FALSE}
 source("scripts/create_pca_plot.R")
 plot_pca()
 ```
@@ -241,20 +242,21 @@ Let's make some volcano plots to visualise the DEGs per timepoint. First for the
 
 ```{r}
 source("scripts/volcanoplot.R")
+source("scripts/get_DESeq_dds.R")
 ```
 ```{r volcano1, fig.height = 15, fig.width = 8, warning = FALSE, message = FALSE}
-v1 <- make_volcanoplot(trtm = c("water", "solA"), tp = 8, log2FC_threshold = 0, FCcutoff_volcano = 1, padj_threshold = 0.01, ttl = "Timepoint 8h, water vs. solA", method = "treatment", xsize = 2.5)
-v2 <- make_volcanoplot(trtm = c("water", "solA"), tp = 24, log2FC_threshold = 0, FCcutoff_volcano = 1, padj_threshold = 0.01, ttl = "Timepoint 24h, water vs. solA", method = "treatment", xsize = 3)
-v3 <- make_volcanoplot(trtm = c("water", "solA"), tp = 48, log2FC_threshold = 0, FCcutoff_volcano = 1, padj_threshold = 0.01, ttl = "Timepoint 48h, water vs. solA", method = "treatment", xsize = 10)
+v1 <- make_volcanoplot(trtm = c("water", "solA"), th = 8, log2FC_threshold = 0, FCcutoff_volcano = 1, padj_threshold = 0.05, ttl = "Timepoint 8h, water vs. solA", xsize = 3)
+v2 <- make_volcanoplot(trtm = c("water", "solA"), th = 24, log2FC_threshold = 0, FCcutoff_volcano = 1, padj_threshold = 0.05, ttl = "Timepoint 24h, water vs. solA", xsize = 3)
+v3 <- make_volcanoplot(trtm = c("water", "solA"), th = 48, log2FC_threshold = 0, FCcutoff_volcano = 1, padj_threshold = 0.05, ttl = "Timepoint 48h, water vs. solA", xsize = 3)
 v1 + v2 + v3 + plot_layout(ncol = 1)
 ```
 
 Let's do the same for the PRD treatment versus water:
 
 ```{r volcano2, fig.height = 15, fig.width = 8, warning = FALSE, message = FALSE}
-v4 <- make_volcanoplot(trtm = c("water", "PRD"), tp = 8, treatment2 = "PRD", log2FC_threshold = 0, FCcutoff_volcano = 1, padj_threshold = 0.01, ttl = "Timepoint 8h, water vs. PRD", method = "treatment", xsize = 8)
-v5 <- make_volcanoplot(trtm = c("water", "PRD"), tp = 24, treatment2 = "PRD", log2FC_threshold = 0, FCcutoff_volcano = 1, padj_threshold = 0.01, ttl = "Timepoint 24h, water vs. PRD", method = "treatment", xsize = 8)
-v6 <- make_volcanoplot(trtm = c("water", "PRD"), tp = 48, treatment2 = "PRD", log2FC_threshold = 0, FCcutoff_volcano = 1, padj_threshold = 0.01, ttl = "Timepoint 48h, water vs. PRD", method = "treatment", xsize = 10)
+v4 <- make_volcanoplot(trtm = c("water", "PRD"), th = 8, log2FC_threshold = 0, FCcutoff_volcano = 1, padj_threshold = 0.05, ttl = "Timepoint 8h, water vs. PRD", xsize = 4)
+v5 <- make_volcanoplot(trtm = c("water", "PRD"), th = 24, log2FC_threshold = 0, FCcutoff_volcano = 1, padj_threshold = 0.05, ttl = "Timepoint 24h, water vs. PRD", xsize = 4)
+v6 <- make_volcanoplot(trtm = c("water", "PRD"), th = 48, log2FC_threshold = 0, FCcutoff_volcano = 1, padj_threshold = 0.05, ttl = "Timepoint 48h, water vs. PRD", xsize = 4)
 
 v4 + v5 + v6 + plot_layout(ncol = 1)
 ```
@@ -262,9 +264,9 @@ v4 + v5 + v6 + plot_layout(ncol = 1)
 Possibly it is interesting to see the impact of all the compounds in PRD that are not solanoeclepin A. So check the DEGs of the PRD treatment versus solA:
 
 ```{r volcano3, fig.height = 15, fig.width = 8, warning = FALSE, message = FALSE}
-v7 <- make_volcanoplot(trtm = c("solA", "PRD"), tp = 8, ref_treatment = "solA", treatment2 = "PRD", log2FC_threshold = 0, FCcutoff_volcano = 1, padj_threshold = 0.01, ttl = "Timepoint 8h, solA vs. PRD", method = "treatment", xsize = 8)
-v8 <- make_volcanoplot(trtm = c("solA", "PRD"), tp = 24, ref_treatment = "solA", treatment2 = "PRD", log2FC_threshold = 0, FCcutoff_volcano = 1, padj_threshold = 0.01, ttl = "Timepoint 24h, solA vs. PRD", method = "treatment", xsize = 8)
-v9 <- make_volcanoplot(trtm = c("solA", "PRD"), tp = 48, ref_treatment = "solA", treatment2 = "PRD", log2FC_threshold = 0, FCcutoff_volcano = 1, padj_threshold = 0.01, ttl = "Timepoint 48h, solA vs. PRD", method = "treatment", xsize = 8)
+v7 <- make_volcanoplot(trtm = c("solA", "PRD"), th = 8, log2FC_threshold = 0, FCcutoff_volcano = 1, padj_threshold = 0.05, ttl = "Timepoint 8h, solA vs. PRD", xsize = 4)
+v8 <- make_volcanoplot(trtm = c("solA", "PRD"), th = 24, log2FC_threshold = 0, FCcutoff_volcano = 1, padj_threshold = 0.05, ttl = "Timepoint 24h, solA vs. PRD", xsize = 4)
+v9 <- make_volcanoplot(trtm = c("solA", "PRD"), th = 48, log2FC_threshold = 0, FCcutoff_volcano = 1, padj_threshold = 0.05, ttl = "Timepoint 48h, solA vs. PRD", xsize = 4)
 
 v7 + v8 + v9 + plot_layout(ncol = 1)
 ```
@@ -272,12 +274,14 @@ v7 + v8 + v9 + plot_layout(ncol = 1)
 We also need lists of differentially expressed genes per treatment. For that, we can use the function get_list_of_DEGs(). Let's do it first for the solA treated samples and let's count how many DEGs for each timepoint:
 
 ```{r DEGslist, message=FALSE, warning=FALSE}
-source("scripts/get_filtered_list_of_DEGs.R")
-solA_8h <- get_list_of_DEGs(trtm = c("water", "solA"), ref_treatment = "water", treatment2 = "solA", tp = 8, log2FC_threshold = 0, padj_threshold = 0.05) %>% rownames_to_column("Geneid")
+source("scripts/get_DESeq_dds.R")
+dds <- get_DESeq_dds()
+source("scripts/get_shrunk_filtered_results.R")
+solA_8h <- get_shrunk_filtered_results(trtm = c("water", "solA"), th = 8, log2FC_threshold = 0, padj_threshold = 0.05) %>% rownames_to_column("Geneid")
 
-solA_24h <- get_list_of_DEGs(trtm = c("water", "solA"), ref_treatment = "water", treatment2 = "solA", tp = 24, log2FC_threshold = 0, padj_threshold = 0.05) %>% rownames_to_column("Geneid")
+solA_24h <- get_shrunk_filtered_results(trtm = c("water", "solA"), th = 24, log2FC_threshold = 0, padj_threshold = 0.05) %>% rownames_to_column("Geneid")
 
-solA_48h <- get_list_of_DEGs(trtm = c("water", "solA"), ref_treatment = "water", treatment2 = "solA", tp = 48, log2FC_threshold = 0, padj_threshold = 0.05) %>% rownames_to_column("Geneid")
+solA_48h <- get_shrunk_filtered_results(trtm = c("water", "solA"), th = 48, log2FC_threshold = 0, padj_threshold = 0.05) %>% rownames_to_column("Geneid")
 
 write.csv(solA_8h, "output/DEGs_solA_8h.csv", row.names = FALSE)
 write.csv(solA_24h, "output/DEGs_solA_24h.csv", row.names = FALSE)
@@ -295,14 +299,14 @@ sum(solA_8h$Geneid %in% solA_48h$Geneid)
 sum(solA_24h$Geneid %in% solA_48h$Geneid)
 ```
 
-Indeed, 24h and 48h overlap quite a bit (428 DEGs overlap), much more than either with the 8h timepoint (131 and 73, respectively).
+Indeed, 24h and 48h overlap the most but still only 31 DEGs, more than either with the 8h timepoint (21 and 13, respectively).
 
 Let's do the same thing for the PRD treated samples:
 
 ```{r DEGslist2, warning = FALSE, message = FALSE}
-PRD_8h <- get_list_of_DEGs(trtm = c("water", "PRD"), ref_treatment = "water", treatment2 = "PRD", tp = 8, log2FC_threshold = 0, padj_threshold = 0.05) %>% rownames_to_column("Geneid")
-PRD_24h <- get_list_of_DEGs(trtm = c("water", "PRD"), ref_treatment = "water", treatment2 = "PRD", tp = 24, log2FC_threshold = 0, padj_threshold = 0.05) %>% rownames_to_column("Geneid")
-PRD_48h <- get_list_of_DEGs(trtm = c("water", "PRD"), ref_treatment = "water", treatment2 = "PRD", tp = 48, log2FC_threshold = 0, padj_threshold = 0.05) %>% rownames_to_column("Geneid")
+PRD_8h <- get_shrunk_filtered_results(trtm = c("water", "PRD"), th = 8, log2FC_threshold = 0, padj_threshold = 0.05) %>% rownames_to_column("Geneid")
+PRD_24h <- get_shrunk_filtered_results(trtm = c("water", "PRD"), th = 24, log2FC_threshold = 0, padj_threshold = 0.05) %>% rownames_to_column("Geneid")
+PRD_48h <- get_shrunk_filtered_results(trtm = c("water", "PRD"), th = 48, log2FC_threshold = 0, padj_threshold = 0.05) %>% rownames_to_column("Geneid")
 
 write.csv(PRD_8h, "output/DEGs_PRD_8h.csv", row.names = FALSE)
 write.csv(PRD_24h, "output/DEGs_PRD_24h.csv", row.names = FALSE)
@@ -332,9 +336,9 @@ PRD_24h_incounts <- counts$Geneid %in% PRD_24h$Geneid
 PRD_48h_incounts <- counts$Geneid %in% PRD_48h$Geneid
 
 #generate lists of DEGs for the PRD vs solA comparisons per timepoint:
-PRD_vs_solA_8h <- get_list_of_DEGs(trtm = c("solA", "PRD"), ref_treatment = "solA", treatment2 = "PRD", tp = 8, log2FC_threshold = 0, padj_threshold = 0.05) %>% rownames_to_column("Geneid")
-PRD_vs_solA_24h <- get_list_of_DEGs(trtm = c("solA", "PRD"), ref_treatment = "solA", treatment2 = "PRD", tp = 24, log2FC_threshold = 0, padj_threshold = 0.05) %>% rownames_to_column("Geneid")
-PRD_vs_solA_48h <- get_list_of_DEGs(trtm = c("solA", "PRD"), ref_treatment = "solA", treatment2 = "PRD", tp = 48, log2FC_threshold = 0, padj_threshold = 0.05) %>% rownames_to_column("Geneid")
+PRD_vs_solA_8h <- get_shrunk_filtered_results(trtm = c("solA", "PRD"), th = 8, log2FC_threshold = 0, padj_threshold = 0.05) %>% rownames_to_column("Geneid")
+PRD_vs_solA_24h <- get_shrunk_filtered_results(trtm = c("solA", "PRD"), th = 24, log2FC_threshold = 0, padj_threshold = 0.05) %>% rownames_to_column("Geneid")
+PRD_vs_solA_48h <- get_shrunk_filtered_results(trtm = c("solA", "PRD"), th = 48, log2FC_threshold = 0, padj_threshold = 0.05) %>% rownames_to_column("Geneid")
 
 #save these lists into the output folder
 write.csv(PRD_vs_solA_8h, "output/DEGs_PRDvsSolA_8h.csv", row.names = FALSE)
@@ -437,7 +441,7 @@ u2 <- upset(data = m[, 1:6],
                              on_bar='white')) + ylab('# overlapping DEGs in intersection')),
            set_size = FALSE)
      
-ud1$group <- factor(ud1$group, levels = c("solA_8h", "solA_48h","solA_24h", "PRD_48h", "PRD_8h", "PRD_24h"))
+ud1$group <- factor(ud1$group, levels = c("solA_8h", "solA_24h","solA_48h", "PRD_8h", "PRD_48h", "PRD_24h"))
 ud1 <- ud1[order(ud1$group),]
 
 
@@ -446,8 +450,8 @@ udplot <- ggplot(ud1, aes(fill=DEG, y=number, x=group)) +
   coord_flip() +
   theme(legend.position = "none") +
   theme_minimal() +
-  theme(axis.text.y=element_blank(),
-        axis.title.y=element_blank()) +
+  theme(axis.title.y=element_blank(),
+        axis.text.y=element_blank()) +
   scale_fill_manual(values = c("red3", "chartreuse4"))
 
 layout <- '
@@ -459,10 +463,10 @@ BBA
 wrap_plots(A = udplot, B = u2, design = layout)
 ```
 
-Interesting in this plot: PRD leads to many more DEGs than solA treatment, at all timepoints. For both treatments, most DEGs are at 24h. In PRD, there are more upregulated genes than downregulated, and for solA this is the other way around.
-Furthermore, whereas there are 326 genes specifically differentially expressed in all timepoints of PRD treatment, only 3 are specific for all timepoints of solA treatment. Potentially, these 326 PRD-specific genes are upregulated by the compounds in root exudate that are not (related to) solA.
-There are no genes are differentially expressed in all 6 treatments, but there are 116 genes that are differentially expressed in all treatments but solA_8h. This treatment also has the least amount of DEGs of all treatments.
-For time-specific DEGs, there are 6, 105, and 44 genes DEGs in both treatments at timepoints 8, 24 and 48h, respectively. For sample-specific DEGs, there are 411, 862 and 234 for PRD and 20, 287 and 64 for solA, exclusively differentially expressed genes at timepoints 8, 24 and 48h, respectively.
+Interesting in this plot: PRD leads to many more DEGs than solA treatment, at all timepoints. For the PRD treatment, most DEGs are at 24h. In PRD, there are more downregulated genes than upregulated, and vice versa for solA treatment.
+Furthermore, whereas there are 289 genes specifically differentially expressed in all timepoints of PRD treatment, and 19 are specific for all timepoints of solA treatment. Potentially, these 289 PRD-specific genes are upregulated by the compounds in root exudate that are not (related to) solA.
+There are 56 genes differentially expressed in all 6 treatments.
+For time-specific DEGs, there are 25, 51, and 122 genes DEGs in both treatments at timepoints 8, 24 and 48h, respectively. For sample-specific DEGs, there are 323, 559 and 475 for PRD and 69, 159 and 212 for solA, exclusively differentially expressed genes at timepoints 8, 24 and 48h, respectively.
 
 # Dauer-related genes
 
@@ -489,7 +493,7 @@ solA_8h_dauer$sample <- c(rep("solA_8h", nrow(solA_8h_dauer)))
 solA_8h_dauer
 ```
 
-So there are two genes that are putative homologues of dauer genes in the solA_8h sample. Let's do the same for the other samples and assemble all results in one table.
+So there are no genes that are putative homologues of dauer genes in the solA_8h sample. Let's do the same for the other samples and assemble all results in one table.
 
 ```{r dauergenes_overlap2, message = FALSE, warning = FALSE}
 solA_24h_dauer <- solA_24h[solA_24h$Geneid %in% dauergenes$Geneid, ] %>% left_join(., dauergenes, by = "Geneid")
@@ -507,7 +511,7 @@ write.csv(dauer_overlap, "output/dauer_overlap.csv", row.names = FALSE)
 dauer_overlap[,-c(4:6)]
 ```
 
-Interestingly, daf-9 is upregulated (log2foldchange 2.0) after 24h in solA, but not in PRD. daf-12 is slightly downregulated after 24h in PRD (log2foldchange -0.5). There are many more differentially expressed dauer-related genes, and we should have an overview for all samples to see what is happening. Therefore, a heatmap showing all dauer-related genes and whether they are differentially expressed, is made.
+There are 48 differentially expressed dauer-related genes, and we should have an overview for all samples to see what is happening. Therefore, a heatmap showing all dauer-related genes and whether they are differentially expressed, is made.
 
 ```{r heatmap_dauer, message = FALSE, warning = FALSE}
 #make heatmap matrix
@@ -524,13 +528,11 @@ colnames(heatm) <- c("solA_8h", "PRD_8h", "solA_24h", "PRD_24h", "solA_48h", "PR
 heatm <- heatm %>% mutate_all(~replace(., is.na(.), 0))
 
 #remove homologues of same gene that are not differentially expressed
-heatm <- heatm[-c(2:42,44:46,48,49,55,58,76,82,92,93,95:97,105,106,108:113,117:130),]
-row.names(heatm)[2] <- "daf-37.1"
-row.names(heatm)[3] <- "daf-37.2"
+heatm <- heatm[-c(2:46,48,49,55,58,76,80,82,92,93,95:97,106,108:121,123:130),]
 
 #arrange pathway labels
 dauergenes2 <- row.names(heatm)
-pathway <- c(rep("cGMP",10), rep("insulin", 19), rep("TGFB", 9), rep("DA_biosynthesis", 18))
+pathway <- c(rep("cGMP",9), rep("insulin", 19), rep("TGFB", 8), rep("DA_biosynthesis", 17))
 anno <- data.frame(dauergenes2, pathway) %>% column_to_rownames("dauergenes2")
 anno$pathway <- factor(anno$pathway, levels = c("cGMP", "insulin", "TGFB", "DA_biosynthesis"))
 annocolour <- list(
@@ -549,7 +551,7 @@ myBreaks <- c(seq(min(heatm), 0, length.out=ceiling(paletteLength/2) + 1),
 pheatmap(as.matrix(t(heatm)),
          cluster_rows = FALSE,
          cluster_cols = FALSE,
-         gaps_col = c(10,29,38),
+         gaps_col = c(9,28,36),
          gaps_row = c(2,4),
          breaks = myBreaks,
          color = myColor,
@@ -557,3 +559,52 @@ pheatmap(as.matrix(t(heatm)),
          annotation_colors = annocolour,
          border_color = NA)
 ```
+
+From this heatmap it is clear that PRD leads to more changes in the expression of dauer genes than solA. Interestingly, the dauer pathway is mostly downregulated, so it seems.
+
+# Single gene expression levels
+
+Let's look into more detail at some of the most important genes (e.g. daf-9, daf-12).
+
+```{r DA_biosynthesis_genes, fig.height=10, fig.width=10, message = FALSE, warning = FALSE}
+source("scripts/plotcounts.R")
+
+p1 <- plotcounts(gene = dauergenes[dauergenes$Ce_ID == "dhs-16.1", 2])
+p2 <- plotcounts(gene = dauergenes[dauergenes$Ce_ID == "emb-8", 2])
+p3 <- plotcounts(gene = dauergenes[dauergenes$Ce_ID == "daf-9", 2])
+p4 <- plotcounts(gene = dauergenes[dauergenes$Ce_ID == "daf-12", 2])
+
+p1 + p2 + p3 + p4 + plot_layout(ncol = 2)
+```
+
+Let's also visualise the expression of genes that are targeted by the chemical inhibition of hatching:
+
+```{r chem_inh_stim, fig.height=15, fig.width=10, message = FALSE, warning = FALSE}
+p1 <- plotcounts(gene = dauergenes[dauergenes$Ce_ID == "daf-37.10", 2])
+p2 <- plotcounts(gene = dauergenes[dauergenes$Ce_ID == "daf-38", 2])
+p3 <- plotcounts(gene = dauergenes[dauergenes$Ce_ID == "srg-36/srg-37.12", 2])
+p4 <- plotcounts(gene = dauergenes[dauergenes$Ce_ID == "age-1", 2])
+p5 <- plotcounts(gene = dauergenes[dauergenes$Ce_ID == "akt-1/2", 2])
+p6 <- plotcounts(gene = dauergenes[dauergenes$Ce_ID == "daf-9", 2])
+
+p1 + p2 + p3 + p4 + p5 + p6 + plot_layout(ncol = 2)
+
+```
+
+Apart from showing all individual expression levels of a gene, it is interesting to look how it behaves on average over time in the different treatments. Make a new function to get these types of plots. The input of this function takes the Gpal_D383 identifier in the argument "gene".
+
+```{r plotcounts2, fig.height=10, fig.width=10, message = FALSE, warning = FALSE}
+source("scripts/plotcounts2.R")
+p1 <- plotcounts2(gene = "Gpal_D383_g01668")
+p2 <- plotcounts2(gene = "Gpal_D383_g05083")
+p3 <- plotcounts2(gene = "Gpal_D383_g02291")
+
+#if you want to see a dauer gene, for example daf-9:
+
+p4 <- plotcounts2(gene = dauergenes[dauergenes$Ce_ID == "daf-9", 2])
+
+p1 + p2 + p3 + p4 + plot_layout(ncol = 2)
+```
+
+
+
