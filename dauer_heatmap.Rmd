@@ -1,0 +1,233 @@
+---
+title: "Dauer_RNAseq"
+author: "Lieke Vlaar"
+date: "06/09/2021"
+output: html_document
+---
+
+```{r include=FALSE}
+#########
+# Library
+#########
+if ("checkpoint" %in% installed.packages()){
+  library("checkpoint") # https://cran.r-project.org/web/packages/checkpoint/index.html
+} else {
+  install.packages("checkpoint")
+  suppressPackageStartupMessages(library("checkpoint"))
+  suppressPackageStartupMessages(checkpoint("2021-04-20"))  # all packages in your project will be taken from that date.
+}
+if ("DESeq2" %in% installed.packages()){
+  library("DESeq2")
+} else {
+  BiocManager::install("DESeq2")
+  library("DESeq2")
+}
+if ("dplyr" %in% installed.packages()){
+  library("dplyr")
+} else {
+  install.packages("dplyr")
+  library("dplyr")
+}
+if ("tidyr" %in% installed.packages()){
+  library("tidyr")
+} else {
+  install.packages("tidyr")
+  library("tidyr")
+}
+if ("tidyverse" %in% installed.packages()){
+  library("tidyverse")
+} else {
+  install.packages("tidyverse")
+  library("tidyverse")
+}
+if ("tibble" %in% installed.packages()){
+  library("tibble") 
+} else {
+  install.packages("tibble")
+  library("tibble")
+}
+if ("patchwork" %in% installed.packages()){
+  library("patchwork") 
+} else {
+  BiocManager::install("patchwork")
+  library("patchwork")
+}
+```
+
+Import table with C elegans orthologs and extract all Gpa gene codes that are affected by daf genes
+
+```{r cele_ortho, message = FALSE, warning = FALSE}
+allgenes_Gpa_Ce <- read.csv("input/BLAST_D383to_Cele_besthitonly.csv", fileEncoding = "UTF-8-BOM")
+allgenes_Gpa_Ce <- allgenes_Gpa_Ce[,-c(35:40)]
+#filter rows that have 'daf-' in their description
+
+a1 <- allgenes_Gpa_Ce %>% dplyr::filter(grepl("daf-", Automated.Description))
+a2 <- allgenes_Gpa_Ce %>% dplyr::filter(grepl("daf-", Concise.Description))
+a3 <- allgenes_Gpa_Ce %>% dplyr::filter(grepl("daf-", Public.Name))
+a4 <- allgenes_Gpa_Ce %>% dplyr::filter(grepl("daf-", Other.Name))
+all_daf_affected <- rbind(a1, a2, a3, a4)
+all_daf_affected <- all_daf_affected[!duplicated(all_daf_affected),]
+ada <- as.data.frame(all_daf_affected[,2])
+names(ada) <- "Geneid"
+```
+
+Make a heatmap of all of these genes
+
+```{r heatmap, fig.width = 3, fig.height = 5, message= FALSE, warning = FALSE}
+hd_solA_8h <- left_join(ada, solA_8h_np[,c(1,3,6)], by = "Geneid")
+hd_solA_24h <- left_join(ada, solA_24h_np[,c(1,3,6)], by = "Geneid")
+hd_solA_48h <- left_join(ada, solA_48h_np[,c(1,3,6)], by = "Geneid") 
+hd_PRD_8h <- left_join(ada, PRD_8h_np[,c(1,3,6)], by = "Geneid") 
+hd_PRD_24h <- left_join(ada, PRD_24h_np[,c(1,3,6)], by = "Geneid")
+hd_PRD_48h <- left_join(ada, PRD_48h_np[,c(1,3,6)], by = "Geneid")
+hd <- cbind(hd_solA_8h, hd_PRD_8h, hd_solA_24h, hd_PRD_24h, hd_solA_48h, hd_PRD_48h) %>% column_to_rownames("Geneid")
+hd_lfc <- hd[, c(1,4,7,10,13,16)]
+colnames(hd_lfc) <- c("solA_8h", "PRE_8h", "solA_24h", "PRE_24h", "solA_48h", "PRE_48h")
+hd_padj <- hd[, c(2,5,8,11,14,17)]
+colnames(hd_padj) <- c("solA_8h", "PRE_8h", "solA_24h", "PRE_24h", "solA_48h", "PRE_48h")
+hd_lfc <- hd_lfc %>% mutate_all(~replace(., is.na(.), 0))
+hd_padj <- hd_padj %>% mutate_all(~replace(., is.na(.), 100))
+hd_lfc$sum <- rowSums(hd_lfc)
+hd_padj$sum <- rowSums(hd_padj)
+hd_lfc <- hd_lfc[!hd_lfc$sum == 0, ]
+hd_padj <- hd_padj[!hd_padj$sum == 600, ]
+hd_lfc <- hd_lfc[,-7]
+hd_padj <- hd_padj[,-7]
+
+library(ComplexHeatmap)
+library(circlize)
+col_fun = colorRamp2(c(-2, 0, 2), c("red3", "linen", "chartreuse4"))
+hd_lfc <- t(hd_lfc) %>% as.data.frame() %>% rownames_to_column("sample")
+hd_lfc$sample <- factor(hd_lfc$sample, levels = c("PRE_8h", "PRE_24h", "PRE_48h", "solA_8h", "solA_24h", "solA_48h"), ordered = TRUE)
+hd_lfc <- hd_lfc[order(hd_lfc$sample),]
+rownames(hd_lfc) <- NULL
+hd_lfc <- hd_lfc %>% column_to_rownames("sample") %>% t()
+
+hd_padj <- t(hd_padj) %>% as.data.frame() %>% rownames_to_column("sample")
+hd_padj$sample <- factor(hd_padj$sample, levels = c("PRE_8h", "PRE_24h", "PRE_48h", "solA_8h", "solA_24h", "solA_48h"), ordered = TRUE)
+hd_padj <- hd_padj[order(hd_padj$sample),]
+rownames(hd_padj) <- NULL
+hd_padj <- hd_padj %>% column_to_rownames("sample") %>% t()
+
+col_fun = colorRamp2(c(-2, 0, 2), c("red3", "white", "chartreuse4"))
+col_fun(seq(-3, 3))
+
+dau_aff_hm <- Heatmap(as.matrix(hd_lfc),
+              col = col_fun,
+              cluster_columns = FALSE,
+              cluster_row_slices = FALSE,
+              cluster_column_slices = FALSE,
+              border = TRUE,
+              column_split = c(rep("PRE", 3), rep("solA", 3)),
+              column_gap = unit(4, "mm"),
+              name = "log2 Fold Change",
+              show_row_names = FALSE,
+              show_row_dend = FALSE)
+dau_aff_hm
+
+```
+
+
+# compare our dataset to Waterston
+
+Import the DEGs from various comparisons:
+
+```{r waterston message = FALSE, warning = FALSE}
+W_DEnD <- read.csv("input/Waterston_DauerEntryvsDauer.csv", fileEncoding = "UTF-8-BOM") %>% dplyr::filter(padj < 0.05)
+W_DEnD$sample <- rep("De_D", nrow(W_DEnD))
+W_DEnL <- read.csv("input/Waterston_DauerEntryvsL2.csv", fileEncoding = "UTF-8-BOM") %>% dplyr::filter(padj < 0.05)
+W_DEnL$sample <- rep("DenL", nrow(W_DEnL))
+W_DexD <- read.csv("input/Waterston_DauerExitvsDauer.csv", fileEncoding = "UTF-8-BOM") %>% dplyr::filter(padj < 0.05)
+W_DexD$sample <- rep("DexD", nrow(W_DexD))
+W_DexL <- read.csv("input/Waterston_DauerExitvsL2.csv", fileEncoding = "UTF-8-BOM") %>% dplyr::filter(padj < 0.05)
+W_DexL$sample <- rep("DexL", nrow(W_DexL))
+W_DL <- read.csv("input/Waterston_DauervsL2.csv", fileEncoding = "UTF-8-BOM") %>% dplyr::filter(padj < 0.05)
+W_DL$sample <- rep("DL", nrow(W_DL))
+
+Waterston <- rbind(W_DEnD, W_DEnL, W_DexD, W_DexL, W_DL)
+names(Waterston)[1] <- "C_ele_gene_ID"
+Waterston <- left_join(Waterston, allgenes_Gpa_Ce[, c(1,2)], by = "C_ele_gene_ID")
+
+#remove rows that have "NA" for Gpa gene id
+
+Waterston <- Waterston[complete.cases(Waterston$Gpal_D383_gene_ID), ]
+```
+
+Combine our own data with the Waterston data
+
+```{r W2 message = FALSE, warning = FALSE}
+names(Waterston) <- c("Ce_geneid", "baseMean", "log2FC_Ce", "lfcSE","pvalue","padj_Ce","sample_W","Geneid")
+W_solA_8h <- left_join(Waterston[,c(3,6,7,8)], solA_8h_np[,c(1,3,6)], by = "Geneid")
+W_solA_24h <- left_join(Waterston[,c(3,6,7,8)], solA_24h_np[,c(1,3,6)], by = "Geneid")
+W_solA_48h <- left_join(Waterston[,c(3,6,7,8)], solA_48h_np[,c(1,3,6)], by = "Geneid") 
+W_PRD_8h <- left_join(Waterston[,c(3,6,7,8)], PRD_8h_np[,c(1,3,6)], by = "Geneid") 
+W_PRD_24h <- left_join(Waterston[,c(3,6,7,8)], PRD_24h_np[,c(1,3,6)], by = "Geneid")
+W_PRD_48h <- left_join(Waterston[,c(3,6,7,8)], PRD_48h_np[,c(1,3,6)], by = "Geneid")
+W_Lieke <- cbind(W_solA_8h, W_solA_24h[,c(5,6)], W_solA_48h[,c(5,6)], W_PRD_8h[,c(5,6)], W_PRD_24h[,c(5,6)], W_PRD_48h[,c(5,6)])
+names(W_Lieke) <- c("log2FC_Ce","padj_Ce","sample_W","Geneid_Gpa","log2FC_solA_8","padj_solA_8","log2FC_solA_24","padj_solA_24",
+                    "log2FC_solA_48", "padj_solA_48","log2FC_PRD_8", "padj_PRD_8", "log2FC_PRD_24", "padj_PRD_24", "log2FC_PRD_48","padj_PRD_48")
+```
+
+Now make five separate datasets (For the W samples)
+
+```{r message = FALSe, warning = FALSE}
+WL_DEnD <- W_Lieke[W_Lieke$sample_W == "De_D",]
+WL_DEnL <- W_Lieke[W_Lieke$sample_W == "DenL",]
+WL_DexD <- W_Lieke[W_Lieke$sample_W == "DexD",]
+WL_DexL <- W_Lieke[W_Lieke$sample_W == "DexL",]
+WL_DL <- W_Lieke[W_Lieke$sample_W == "DL",]
+```
+
+Make 5 separate heatmaps:
+
+```{r, fig.height = 6, fig.width = 7}
+WL_DEnD_f <- WL_DEnD[,c(1,5,7,9,11,13,15)]
+WL_DEnL_f <- WL_DEnL[,c(1,5,7,9,11,13,15)]
+WL_DexD_f <- WL_DexD[,c(1,5,7,9,11,13,15)]
+WL_DexL_f <- WL_DexL[,c(1,5,7,9,11,13,15)]
+WL_DL_f <- WL_DL[,c(1,5,7,9,11,13,15)]
+W_Lieke1 <- W_Lieke[W_Lieke$sample_W == "DenL" | W_Lieke$sample_W == "DexL" | W_Lieke$sample_W == "DL",]
+W_Lieke2 <- W_Lieke[W_Lieke$sample_W == "De_D" | W_Lieke$sample_W == "DexD",]
+W_Lieke <- W_Lieke[,c(1,5,7,9,11,13,15)]
+W_Lieke1 <- W_Lieke1[,c(1,5,7,9,11,13,15)]
+W_Lieke2 <- W_Lieke2[,c(1,5,7,9,11,13,15)]
+names(W_Lieke) <- c("C. elegans", "Gpa_PRE_8h", "Gpa_PRE_24h","Gpa_PRE_48h","Gpa_solA_8h","Gpa_solA_24h","Gpa_solA_48h")
+names(W_Lieke1) <- c("C. elegans", "Gpa_PRE_8h", "Gpa_PRE_24h","Gpa_PRE_48h","Gpa_solA_8h","Gpa_solA_24h","Gpa_solA_48h")
+names(W_Lieke2) <- c("C. elegans", "Gpa_PRE_8h", "Gpa_PRE_24h","Gpa_PRE_48h","Gpa_solA_8h","Gpa_solA_24h","Gpa_solA_48h")
+
+h10 <- Heatmap(as.matrix(W_Lieke1),
+              col = col_fun,
+              cluster_columns = FALSE,
+              cluster_row_slices = FALSE,
+              cluster_column_slices = FALSE,
+              border = TRUE,
+              column_split = c("C. elegans", rep("PRE", 3), rep("solA", 3)),
+              column_gap = unit(4, "mm"),
+              row_split = c(rep("dauer entry vs. L2", 780), 
+                            rep("dauer exit vs. L2", 943), 
+                            rep("dauer vs. L2", 1263)),
+              row_gap = unit(4, "mm"),
+              name = "log2FC",
+              show_row_names = FALSE,
+              show_row_dend = FALSE,
+              row_title_rot = 0)
+h11 <- Heatmap(as.matrix(W_Lieke2),
+              col = col_fun,
+              cluster_columns = FALSE,
+              cluster_row_slices = FALSE,
+              cluster_column_slices = FALSE,
+              border = TRUE,
+              column_split = c("C. elegans", rep("PRE", 3), rep("solA", 3)),
+              column_gap = unit(4, "mm"),
+              row_split = c(rep("dauer entry vs. dauer", 4), 
+                            rep("dauer exit vs. dauer", 5)),
+              row_gap = unit(4, "mm"),
+              name = "log2FC",
+              show_row_names = FALSE,
+              show_row_dend = FALSE,
+              row_title_rot = 0)
+h10
+h11
+```
+
+

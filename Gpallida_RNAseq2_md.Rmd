@@ -220,19 +220,21 @@ Let's see how the samples cluster in a PCA plot. We take all samples and plot it
 
 ```{r PCA_allsamples, message = FALSE, warning = FALSE}
 source("scripts/create_pca_plot.R")
-plot_pca()
+p <- plot_pca()
+p
 ```
 
 These seem to cluster mostly on timepoint, because timepoint 8 (circles) are separated from the rest. Timepoint 24 and 48 seem to mix a little. Also, the colours, which indicate treatment, seem to separate within the timepoint, which is good!
 Hence, timepoint is the largest source of variation in our experiment, followed by treatment.
 Let's look at the PCA plots of individual timepoints.
 
+Figure S1
 ```{r PCA_per_treatment}
-p1 <- plot_pca(tp = 8)
-p2 <- plot_pca(tp = 24)
-p3 <- plot_pca(tp = 48)
+p1 <- plot_pca(tp = 8) + theme_minimal() + guides(shape = FALSE)
+p2 <- plot_pca(tp = 24) + theme_minimal() + guides(shape = F)
+p3 <- plot_pca(tp = 48) + theme_minimal() + guides(shape = F)
 
-p1 + p2 + p3 + plot_layout(ncol = 2)
+p + p1 + p2 + p3 + plot_layout(ncol = 2)
 ```
 On all individual timepoints, the treatments cluster within the first two components. This means that these are the biggest sources of variation in our experiments.
 
@@ -544,11 +546,11 @@ annocolour <- list(
 
 #Arrange colour palette
 paletteLength <- 50
-myColor <- colorRampPalette(c("red3", "black", "chartreuse4"))(paletteLength)
+myColor <- colorRampPalette(c("red3", "gray", "chartreuse4"))(paletteLength)
 myBreaks <- c(seq(min(heatm), 0, length.out=ceiling(paletteLength/2) + 1), 
               seq((max(heatm)/paletteLength), max(heatm), length.out=floor(paletteLength/2)))
 
-pheatmap(as.matrix(t(heatm)),
+p1 <- pheatmap(as.matrix(t(heatm)),
          cluster_rows = FALSE,
          cluster_cols = FALSE,
          gaps_col = c(9,28,36),
@@ -561,6 +563,80 @@ pheatmap(as.matrix(t(heatm)),
 ```
 
 From this heatmap it is clear that PRD leads to more changes in the expression of dauer genes than solA. Interestingly, the dauer pathway is mostly downregulated, so it seems.
+
+We can also include ALL dauer genes - whether differentially expressed or not - and indicate the significant genes with a *.
+
+FIGURE 1
+
+```{r dauerheatmap2, fig.height = 15, fig.width = 4, message = FALSE, warning = FALSE}
+source("scripts/get_shrunk_filtered_results.R")
+solA_8h_np <- get_shrunk_filtered_results(trtm = c("water", "solA"), th = 8, log2FC_threshold = 0, padj_threshold = 1) %>% rownames_to_column("Geneid")
+solA_24h_np <- get_shrunk_filtered_results(trtm = c("water", "solA"), th = 24, log2FC_threshold = 0, padj_threshold = 1) %>% rownames_to_column("Geneid")
+solA_48h_np <- get_shrunk_filtered_results(trtm = c("water", "solA"), th = 48, log2FC_threshold = 0, padj_threshold = 1) %>% rownames_to_column("Geneid")
+PRD_8h_np <- get_shrunk_filtered_results(trtm = c("water", "PRD"), th = 8, log2FC_threshold = 0, padj_threshold = 1) %>% rownames_to_column("Geneid")
+PRD_24h_np <- get_shrunk_filtered_results(trtm = c("water", "PRD"), th = 24, log2FC_threshold = 0, padj_threshold = 1) %>% rownames_to_column("Geneid")
+PRD_48h_np <- get_shrunk_filtered_results(trtm = c("water", "PRD"), th = 48, log2FC_threshold = 0, padj_threshold = 1) %>% rownames_to_column("Geneid")
+
+heat2_solA_8h <- left_join(dauergenes, solA_8h_np[,c(1,3,6)], by = "Geneid")
+heat2_solA_24h <- left_join(dauergenes, solA_24h_np[,c(1,3,6)], by = "Geneid")
+heat2_solA_48h <- left_join(dauergenes, solA_48h_np[,c(1,3,6)], by = "Geneid") 
+heat2_PRD_8h <- left_join(dauergenes, PRD_8h_np[,c(1,3,6)], by = "Geneid") 
+heat2_PRD_24h <- left_join(dauergenes, PRD_24h_np[,c(1,3,6)], by = "Geneid")
+heat2_PRD_48h <- left_join(dauergenes, PRD_48h_np[,c(1,3,6)], by = "Geneid")
+heatm2 <- cbind(heat2_solA_8h, heat2_PRD_8h, heat2_solA_24h, heat2_PRD_24h, heat2_solA_48h, heat2_PRD_48h) %>% column_to_rownames("Ce_ID")
+heatm2_lfc <- heatm2[, c(3,8,13,18,23,28)]
+colnames(heatm2_lfc) <- c("solA_8h", "PRE_8h", "solA_24h", "PRE_24h", "solA_48h", "PRE_48h")
+heatm2_padj <- heatm2[, c(4,9,14,19,24,29)]
+colnames(heatm2_padj) <- c("solA_8h", "PRE_8h", "solA_24h", "PRE_24h", "solA_48h", "PRE_48h")
+heatm2_lfc <- heatm2_lfc %>% mutate_all(~replace(., is.na(.), 0))
+heatm2_padj <- heatm2_padj %>% mutate_all(~replace(., is.na(.), 100))
+heatm2_lfc$sum <- rowSums(heatm2_lfc)
+heatm2_padj$sum <- rowSums(heatm2_padj)
+heatm2_lfc <- heatm2_lfc[!heatm2_lfc$sum == 0, ]
+heatm2_padj <- heatm2_padj[!heatm2_padj$sum == 600, ]
+heatm2_lfc <- heatm2_lfc[,-7]
+heatm2_padj <- heatm2_padj[,-7]
+
+library(ComplexHeatmap)
+library(circlize)
+col_fun = colorRamp2(c(-2, 0, 2), c("red3", "white", "chartreuse4"))
+col_fun(seq(-3, 3))
+heatm2_lfc <- t(heatm2_lfc) %>% as.data.frame() %>% rownames_to_column("sample")
+heatm2_lfc$sample <- factor(heatm2_lfc$sample, levels = c("PRE_8h", "PRE_24h", "PRE_48h", "solA_8h", "solA_24h", "solA_48h"), ordered = TRUE)
+heatm2_lfc <- heatm2_lfc[order(heatm2_lfc$sample),]
+rownames(heatm2_lfc) <- NULL
+heatm2_lfc <- heatm2_lfc %>% column_to_rownames("sample") %>% t()
+
+heatm2_padj <- t(heatm2_padj) %>% as.data.frame() %>% rownames_to_column("sample")
+heatm2_padj$sample <- factor(heatm2_padj$sample, levels = c("PRE_8h", "PRE_24h", "PRE_48h", "solA_8h", "solA_24h", "solA_48h"), ordered = TRUE)
+heatm2_padj <- heatm2_padj[order(heatm2_padj$sample),]
+rownames(heatm2_padj) <- NULL
+heatm2_padj <- heatm2_padj %>% column_to_rownames("sample") %>% t()
+
+p3 <- Heatmap(as.matrix(heatm2_lfc),
+              col = col_fun,
+              cluster_rows = FALSE,
+              cluster_columns = FALSE,
+              cluster_row_slices = FALSE,
+              cluster_column_slices = FALSE,
+              border = TRUE,
+              row_split = factor(c(rep("cGMP signalling", 42), rep("insulin/IGF-1", 19), rep("TGF\U03B2", 10), rep("DA biosynthesis", 42)), levels = c("cGMP signalling", "insulin/IGF-1", "TGF\U03B2", "DA biosynthesis"), ordered = TRUE),
+              row_gap = unit(4, "mm"),
+              column_split = c(rep("PRE", 3), rep("solA", 3)),
+              column_gap = unit(4, "mm"),
+              cell_fun = function(j, i, x, y, w, h, fill) {
+                if(as.matrix(heatm2_padj)[i, j] < 0.001) {grid.text("***", x, y, vjust = .68)
+                } else if(as.matrix(heatm2_padj)[i, j] < 0.01) {grid.text("**", x, y, vjust = .68)
+                } else if(as.matrix(heatm2_padj)[i, j] < 0.05) {grid.text("*", x, y, vjust = .68)
+                  }
+                gp = gpar(fontsize = 2)
+                },
+              name = "log2 Fold Change",
+              row_names_gp = gpar(fontsize = 5))
+p3
+```
+
+
 
 # Single gene expression levels
 
