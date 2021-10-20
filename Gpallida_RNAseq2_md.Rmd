@@ -636,13 +636,111 @@ p3 <- Heatmap(as.matrix(heatm2_lfc),
 p3
 ```
 
+Genes with many putative orthologues are messing up the image (since they often don't show interesting expression patterns). Remove those from the figure.
 
+ALTERNATIVE FIGURE 1
+
+```{r dauerheatmap3, fig.height = 10, fig.width = 4, message = FALSE, warning = FALSE}
+heatm2_lfcA <- heatm2_lfc %>% as.data.frame() %>% rownames_to_column("names")
+x <- c("srg-36/srg-37.4","srg-36/srg-37.5","srg-36/srg-37.8","srg-36/srg-37.9","srg-36/srg-37.11",
+                                               "srg-36/srg-37.12",
+                                               "srg-36/srg-37.13",
+                                               "srg-36/srg-37.14",
+                                               "srg-36/srg-37.15",
+                                               "srg-36/srg-37.17",
+                                               "srg-36/srg-37.18",
+                                               "srg-36/srg-37.19",
+                                               "srg-36/srg-37.20",
+                                               "srg-36/srg-37.21",
+                                               "srg-36/srg-37.23",
+                                               "srg-36/srg-37.25",
+                                               "srg-36/srg-37.26",
+                                               "srg-36/srg-37.31",
+                                               "srg-36/srg-37.37",
+                                               "daf-37.1",
+                                               "daf-37.2",
+                                               "daf-37.3",
+                                               "daf-37.4",
+                                               "daf-37.5",
+                                               "daf-37.6",
+                                               "daf-37.7",
+                                               "daf-37.8",
+                                               "daf-37.9",
+                                               "daf-37.11",
+                                               "daf-37.12",
+                                               "daf-11.2",
+                                               "tax-4.2",
+                                               "ftt-2/par-5.1",
+                                               "acs-19.2",
+                                               "daf-7.2",
+                                               "daf-1.2",
+                                               "dhs-16.2",
+                                               "dhs-16.3",
+                                               "hsd-1.2",
+                                               "hsd-1.3",
+                                               "hsd-1.4",
+                                               "din-1.1",
+                                               "din-1.3",
+                                               "din-1.4",
+                                               "din-1.5",
+                                               "ugt-65.1",
+                                               "ugt-65.4",
+                                               "ugt-65.5",
+                                               "ugt-65.7",
+                                               "ugt-65.9",
+                                               "ugt-65.10",
+                                               "ugt-65.11",
+                                               "ugt-65.12",
+                                               "ugt-65.13",
+                                               "ugt-65.14",
+                                               "ugt-65.15",
+                                               "ugt-65.16",
+                                               "ugt-65.17",
+                                               "ugt-65.18",
+                                               "ugt-65.19",
+                                               "ugt-65.20",
+                                               "ugt-65.21",
+                                               "ugt-65.22",
+                                               "ugt-65.23",
+                                               "ugt-65.24",
+                                               "ugt-65.25")
+heatm2_lfcA <- heatm2_lfcA[!heatm2_lfcA$names %in% x, ]
+rownames(heatm2_lfcA) <- NULL
+heatm2_lfcA <- heatm2_lfcA %>% column_to_rownames("names")
+heatm2_padjA <- heatm2_padj %>% as.data.frame() %>% rownames_to_column("names")
+heatm2_padjA <- heatm2_padjA[!heatm2_padjA$names %in% x,]
+rownames(heatm2_padjA) <- NULL
+heatm2_padjA <- heatm2_padjA %>% column_to_rownames("names")
+
+p4 <- Heatmap(as.matrix(heatm2_lfcA),
+              col = col_fun,
+              cluster_rows = FALSE,
+              cluster_columns = FALSE,
+              cluster_row_slices = FALSE,
+              cluster_column_slices = FALSE,
+              border = TRUE,
+              row_split = factor(c(rep("cGMP signalling", 10), rep("insulin/IGF-1", 17), rep("TGF\U03B2", 8), rep("DA biosynthesis", 12)), levels = c("cGMP signalling", "insulin/IGF-1", "TGF\U03B2", "DA biosynthesis"), ordered = TRUE),
+              row_gap = unit(4, "mm"),
+              column_split = c(rep("PRE", 3), rep("solA", 3)),
+              column_gap = unit(4, "mm"),
+              cell_fun = function(j, i, x, y, w, h, fill) {
+                if(as.matrix(heatm2_padjA)[i, j] < 0.001) {grid.text("***", x, y, vjust = .68)
+                } else if(as.matrix(heatm2_padjA)[i, j] < 0.01) {grid.text("**", x, y, vjust = .68)
+                } else if(as.matrix(heatm2_padjA)[i, j] < 0.05) {grid.text("*", x, y, vjust = .68)
+                  }
+                gp = gpar(fontsize = 4)
+                },
+              name = "log2 Fold Change",
+              row_names_gp = gpar(fontsize = 7))
+p4
+
+```
 
 # Single gene expression levels
 
 Let's look into more detail at some of the most important genes (e.g. daf-9, daf-12).
 
-```{r DA_biosynthesis_genes, fig.height=10, fig.width=10, message = FALSE, warning = FALSE}
+```{r DA_biosynthesis_genes, fig.height=5, fig.width=6, message = FALSE, warning = FALSE}
 source("scripts/plotcounts.R")
 
 p1 <- plotcounts(gene = dauergenes[dauergenes$Ce_ID == "dhs-16.1", 2])
@@ -650,26 +748,14 @@ p2 <- plotcounts(gene = dauergenes[dauergenes$Ce_ID == "emb-8", 2])
 p3 <- plotcounts(gene = dauergenes[dauergenes$Ce_ID == "daf-9", 2])
 p4 <- plotcounts(gene = dauergenes[dauergenes$Ce_ID == "daf-12", 2])
 
-p1 + p2 + p3 + p4 + plot_layout(ncol = 2)
+p1 + p2 + p3 + p4 + plot_layout(ncol = 2, guides = "collect")
 ```
 
-Let's also visualise the expression of genes that are targeted by the chemical inhibition of hatching:
 
-```{r chem_inh_stim, fig.height=15, fig.width=10, message = FALSE, warning = FALSE}
-p1 <- plotcounts(gene = dauergenes[dauergenes$Ce_ID == "daf-37.10", 2])
-p2 <- plotcounts(gene = dauergenes[dauergenes$Ce_ID == "daf-38", 2])
-p3 <- plotcounts(gene = dauergenes[dauergenes$Ce_ID == "srg-36/srg-37.12", 2])
-p4 <- plotcounts(gene = dauergenes[dauergenes$Ce_ID == "age-1", 2])
-p5 <- plotcounts(gene = dauergenes[dauergenes$Ce_ID == "akt-1/2", 2])
-p6 <- plotcounts(gene = dauergenes[dauergenes$Ce_ID == "daf-9", 2])
-
-p1 + p2 + p3 + p4 + p5 + p6 + plot_layout(ncol = 2)
-
-```
 
 Apart from showing all individual expression levels of a gene, it is interesting to look how it behaves on average over time in the different treatments. Make a new function to get these types of plots. The input of this function takes the Gpal_D383 identifier in the argument "gene".
 
-```{r plotcounts2, fig.height=10, fig.width=10, message = FALSE, warning = FALSE}
+```{r plotcounts2, fig.height=5, fig.width=6, message = FALSE, warning = FALSE}
 source("scripts/plotcounts2.R")
 p1 <- plotcounts2(gene = "Gpal_D383_g01668")
 p2 <- plotcounts2(gene = "Gpal_D383_g05083")
@@ -679,8 +765,61 @@ p3 <- plotcounts2(gene = "Gpal_D383_g02291")
 
 p4 <- plotcounts2(gene = dauergenes[dauergenes$Ce_ID == "daf-9", 2])
 
-p1 + p2 + p3 + p4 + plot_layout(ncol = 2)
+p1 + p2 + p3 + p4 + plot_layout(ncol = 2, guides = "collect")
+```
+
+Visualise the targets of inhibition with the new function
+Figure S6
+
+```{r inhibitionplots, fig.height=7, fig.width=7, message = FALSE, warning = FALSE}
+source("scripts/get_unfiltered_res_dds.R")
+
+dds <- get_DESeq_dds()
+
+p1 <- plotcounts2(gene = dauergenes[dauergenes$Ce_ID == "daf-37.10", 2])
+p2 <- plotcounts2(gene = dauergenes[dauergenes$Ce_ID == "daf-38", 2])
+p3 <- plotcounts2(gene = dauergenes[dauergenes$Ce_ID == "srg-36/srg-37.12", 2])
+p4 <- plotcounts2(gene = dauergenes[dauergenes$Ce_ID == "age-1", 2])
+p5 <- plotcounts2(gene = dauergenes[dauergenes$Ce_ID == "akt-1/2", 2])
+p6 <- plotcounts2(gene = dauergenes[dauergenes$Ce_ID == "daf-9", 2])
+p7 <- plotcounts2(gene = dauergenes[dauergenes$Ce_ID == "daf-12", 2])
+p8 <- plotcounts2(gene = dauergenes[dauergenes$Ce_ID == "din-1.1", 2])
+p9 <- plotcounts2(gene = dauergenes[dauergenes$Ce_ID == "din-1.2", 2])
+
+(p1 + ggtitle("daf-37")) + (p2 + ggtitle("daf-38")) + (p3 + ggtitle("srg-36 / srg-37")) + (p4 + ggtitle("age-1")) + (p5 + ggtitle("akt-1/2")) + (p6 + ggtitle("daf-9")) + (p7 + ggtitle("daf-12")) + guide_area() + plot_layout(ncol = 3, guides = "collect") + plot_annotation(tag_levels = 'A')
+
 ```
 
 
+Visualise daf-12 targets
 
+```{r daf12targetplots, fig.height=9, fig.width=7, message = FALSE, warning = FALSE}
+p10 <- plotcounts2(gene = dauergenes[dauergenes$Ce_ID == "gck-2", 2])
+p11 <- plotcounts2(gene = dauergenes[dauergenes$Ce_ID == "ugt-65.2", 2])
+p12 <- plotcounts2(gene = dauergenes[dauergenes$Ce_ID == "lit-1", 2])
+p13 <- plotcounts2(gene = dauergenes[dauergenes$Ce_ID == "lev-9", 2])
+
+
+(p1 + ggtitle("daf-37")) + (p2 + ggtitle("daf-38")) + (p3 + ggtitle("srg-36 / srg-37")) + (p4 + ggtitle("age-1")) + (p5 + ggtitle("akt-1/2")) + (p6 + ggtitle("daf-9")) + (p7 + ggtitle("daf-12")) + (p10 + ggtitle("gck-2")) + (p11 + ggtitle("ugt-65")) + (p12 + ggtitle("lit-1")) + (p13 + ggtitle("lev-9")) + guide_area() + plot_layout(ncol = 3, guides = "collect") + plot_annotation(tag_levels = 'A')
+```
+
+
+Plots of BOECK et al. (WAterston)
+
+```{r Waterston, fig.height=9, fig.width=7}
+ddsW <- get_DESeq_dds2(counts_csv_file = "input/countsW.csv", xp_design_csv_file = "input/xp_designW.csv")
+w1 <- plotcounts3(d = ddsW, gene = "T07H6.5") + ggtitle("lev-9")
+w2 <- plotcounts3(d = ddsW, gene = "W06F12.1") + ggtitle("lit-1")
+w3 <- plotcounts3(d = ddsW, gene = "F08G5.5") + ggtitle("ugt-65")
+w4 <- plotcounts3(d = ddsW, gene = "ZC404.9") + ggtitle("gck-2")
+w5 <- plotcounts3(d = ddsW, gene = "C12D8.10") + ggtitle("akt-1")
+w6 <- plotcounts3(d = ddsW, gene = "F28H6.1") + ggtitle("akt-2")
+w7 <- plotcounts3(d = ddsW, gene = "B0334.8") + ggtitle("age-1")
+w8 <- plotcounts3(d = ddsW, gene = "B0412.2") + ggtitle("daf-7")
+w9 <- plotcounts3(d = ddsW, gene = "K08E7.2") + ggtitle("hsb-1")
+w10 <- plotcounts3(d = ddsW, gene = "F11A1.3") + ggtitle("daf-12")
+w11 <- plotcounts3(d = ddsW, gene = "T13C5.1") + ggtitle("daf-9")
+w12 <- plotcounts3(d = ddsW, gene ="F07A11.6") + ggtitle("din-1")
+
+w1 + w2 + w3 + w4 + w5 +w6+w7+w8+w9+w10+w11+w12+guide_area() + plot_layout(ncol = 3, guides = "collect") + plot_annotation(tag_levels = 'A')
+```
