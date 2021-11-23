@@ -127,6 +127,64 @@ dau_aff_hm
 
 ```
 
+```{r, heatmap_random, fig.width = 3, fig.height = 5, message= FALSE, warning = FALSE}
+#make random set of same number of genes to ada
+ada_r <- as.data.frame(sample(allgenes_Gpa_Ce$Gpal_D383_gene_ID, size = 799))
+names(ada_r) <- "Geneid"
+
+hd_solA_8h <- left_join(ada_r, solA_8h_np[,c(1,3,6)], by = "Geneid")
+hd_solA_24h <- left_join(ada_r, solA_24h_np[,c(1,3,6)], by = "Geneid")
+hd_solA_48h <- left_join(ada_r, solA_48h_np[,c(1,3,6)], by = "Geneid") 
+hd_PRD_8h <- left_join(ada_r, PRD_8h_np[,c(1,3,6)], by = "Geneid") 
+hd_PRD_24h <- left_join(ada_r, PRD_24h_np[,c(1,3,6)], by = "Geneid")
+hd_PRD_48h <- left_join(ada_r, PRD_48h_np[,c(1,3,6)], by = "Geneid")
+hd <- cbind(hd_solA_8h, hd_PRD_8h, hd_solA_24h, hd_PRD_24h, hd_solA_48h, hd_PRD_48h) %>% column_to_rownames("Geneid")
+hd_lfc <- hd[, c(1,4,7,10,13,16)]
+colnames(hd_lfc) <- c("solA_8h", "PRE_8h", "solA_24h", "PRE_24h", "solA_48h", "PRE_48h")
+hd_padj <- hd[, c(2,5,8,11,14,17)]
+colnames(hd_padj) <- c("solA_8h", "PRE_8h", "solA_24h", "PRE_24h", "solA_48h", "PRE_48h")
+hd_lfc <- hd_lfc %>% mutate_all(~replace(., is.na(.), 0))
+hd_padj <- hd_padj %>% mutate_all(~replace(., is.na(.), 100))
+hd_lfc$sum <- rowSums(hd_lfc)
+hd_padj$sum <- rowSums(hd_padj)
+hd_lfc <- hd_lfc[!hd_lfc$sum == 0, ]
+hd_padj <- hd_padj[!hd_padj$sum == 600, ]
+hd_lfc <- hd_lfc[,-7]
+hd_padj <- hd_padj[,-7]
+
+library(ComplexHeatmap)
+library(circlize)
+col_fun = colorRamp2(c(-2, 0, 2), c("red3", "linen", "chartreuse4"))
+hd_lfc <- t(hd_lfc) %>% as.data.frame() %>% rownames_to_column("sample")
+hd_lfc$sample <- factor(hd_lfc$sample, levels = c("PRE_8h", "PRE_24h", "PRE_48h", "solA_8h", "solA_24h", "solA_48h"), ordered = TRUE)
+hd_lfc <- hd_lfc[order(hd_lfc$sample),]
+rownames(hd_lfc) <- NULL
+hd_lfc <- hd_lfc %>% column_to_rownames("sample") %>% t()
+
+hd_padj <- t(hd_padj) %>% as.data.frame() %>% rownames_to_column("sample")
+hd_padj$sample <- factor(hd_padj$sample, levels = c("PRE_8h", "PRE_24h", "PRE_48h", "solA_8h", "solA_24h", "solA_48h"), ordered = TRUE)
+hd_padj <- hd_padj[order(hd_padj$sample),]
+rownames(hd_padj) <- NULL
+hd_padj <- hd_padj %>% column_to_rownames("sample") %>% t()
+
+col_fun = colorRamp2(c(-2, 0, 2), c("red3", "white", "chartreuse4"))
+col_fun(seq(-3, 3))
+
+dau_aff_hm_random <- Heatmap(as.matrix(hd_lfc),
+              col = col_fun,
+              cluster_columns = FALSE,
+              cluster_row_slices = FALSE,
+              cluster_column_slices = FALSE,
+              border = TRUE,
+              column_split = c(rep("PRE", 3), rep("solA", 3)),
+              column_gap = unit(4, "mm"),
+              name = "log2 Fold Change",
+              show_row_names = FALSE,
+              show_row_dend = FALSE)
+dau_aff_hm_random
+
+```
+
 
 # compare our dataset to Waterston
 
